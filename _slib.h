@@ -10,7 +10,7 @@
     ((x) < (y) ? (x) : (y))
 #define $max(x, y) \
     ((x) > (y) ? (x) : (y))
-#define $swap(x, y, T) \
+#define $swap(T, x, y) \
 { \
     T _t = $drf(T) x; \
     $drf(T) x = $drf(T) y; \
@@ -26,7 +26,7 @@ static inline int T ## _cmpf(const void * lhs, const void * rhs) \
 #define $swapf_gen(T) \
 static inline void T ## _swapf(void * lhs, void * rhs) \
 { \
-    $swap(lhs, rhs, T) \
+    $swap(T, lhs, rhs) \
 }
 
 #define $hashf_gen(T) \
@@ -189,6 +189,7 @@ void Heap_del(Heap * heap);
 i32 Heap_count(const Heap * heap);
 bool Heap_empty(const Heap * heap);
 bool Heap_insert_check(Heap * heap, const void * item, cmpf cmp, swapf swap);
+void * Heap_top(const Heap * heap);
 void * Heap_pop_top(Heap * heap, cmpf cmp, swapf swap);
 void * Heap_pop_all(Heap * heap);
 
@@ -215,6 +216,7 @@ void Deq_map_vv(const Deq * deq, void (* f)(void *));
 bool Htbl_new_capacity(Htbl * htbl, i32 isize, i32 capacity);
 bool Htbl_new(Htbl * htbl, i32 isize);
 void Htbl_del(Htbl * htbl);
+void Htbl_purge(Htbl * htbl);
 i32 Htbl_count(const Htbl * htbl);
 void * Htbl_get(const Htbl * htbl, const void * item, hashf hash, eqf eq);
 bool Htbl_insert_check(Htbl * htbl, const void * item, hashf hash);
@@ -728,6 +730,11 @@ bool Heap_insert_check(Heap * heap, const void * item, cmpf cmp, swapf swap)
     return true;
 }
 
+void * Heap_top(const Heap * heap)
+{
+    return Vec_first(heap);
+}
+
 void * Heap_pop_top(Heap * heap, cmpf cmp, swapf swap)
 {
     if (Heap_empty(heap)) return 0;
@@ -1013,6 +1020,13 @@ bool Htbl_insert_check(Htbl * htbl, const void * item, hashf hash)
     _Htbl_insert(htbl, idx, item);
 
     return true;
+}
+
+void Htbl_purge(Htbl * htbl)
+{
+    htbl->count = 0;
+    Bfd_zeroes(& htbl->index);
+    Bfd_zeroes(& htbl->rem);
 }
 
 #undef _HTBL_DC
