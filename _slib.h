@@ -16,6 +16,7 @@
     $drf(T) x = $drf(T) y; \
     $drf(T) y = _t; \
 }
+
 #define $cmpf_gen(T) \
 static inline int T ## _cmpf(const void * lhs, const void * rhs) \
 { \
@@ -26,6 +27,18 @@ static inline int T ## _cmpf(const void * lhs, const void * rhs) \
 static inline void T ## _swapf(void * lhs, void * rhs) \
 { \
     $swap(lhs, rhs, T) \
+}
+
+#define $hashf_gen(T) \
+static inline u64 T ## _hashf(const void * item) \
+{ \
+    return hash_djb(item, sizeof(T)); \
+}
+
+#define $eqf_gen(T) \
+static inline bool T ## _eqf(const void * lhs, const void * rhs) \
+{ \
+    return $drf(T) lhs == $drf(T) rhs; \
 }
 
 typedef __INT64_TYPE__  i64;
@@ -43,6 +56,7 @@ typedef struct Bfd      Bfd;
 typedef struct Vec      Vec;
 typedef struct Deq      Deq;
 typedef struct Vec      Heap;
+typedef struct Htbl     Htbl;
 
 struct Seg
 {
@@ -70,6 +84,37 @@ struct Deq
     i32 len;
 };
 
+struct Htbl
+{
+    Bfd index;
+    Bfd rem;
+    Seg seg;
+    i32 count;
+};
+
+static inline u64 hash_djb(const byte * bytes, i32 len)
+{
+    u64 hash = 5381;
+
+    for (i32 k = 0; k < len; k ++)
+    {
+        hash = ((hash << 5) + hash) + bytes[k];
+    }
+
+    return hash;
+}
+
+static inline u64 rng_xor(u64 * seed)
+{
+    u64 x;
+
+    x = * seed;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+
+    return * seed = x;
+}
 
 u64 math_next_pow2(u64 x);
 u64 math_ack(u64 m, u64 n);
@@ -165,6 +210,15 @@ bool Deq_reservel(Deq * deq, i32 len);
 bool Deq_pushl_check(Deq * deq, const void * item);
 bool Deq_pushr_check(Deq * deq, const void * item);
 void Deq_map_vv(const Deq * deq, void (* f)(void *));
+
+//Htbl
+bool Htbl_new_capacity(Htbl * htbl, i32 isize, i32 capacity);
+bool Htbl_new(Htbl * htbl, i32 isize);
+void Htbl_del(Htbl * htbl);
+i32 Htbl_count(const Htbl * htbl);
+void * Htbl_get(const Htbl * htbl, const void * item, hashf hash, eqf eq);
+bool Htbl_insert_check(Htbl * htbl, const void * item, hashf hash);
+
 
 //io
 
@@ -815,8 +869,156 @@ void Deq_map_vv(const Deq * deq, void (* f)(void *))
 
 #undef _DEQ_DC
 
-// io
+#define _HTBL_DC    (1 << 6)
+#define _HTBL_LOADF (0.75)
 
+bool Htbl_new_capacity(Htbl * htbl, i32 isize, i32 capacity)
+{
+    * htbl = (Htbl) {};
+
+    return (Bfd_new(& htbl->index, capacity) && 
+            Bfd_new(& htbl->rem, capacity) && 
+            Seg_new(& htbl->seg, isize, capacity));
+}
+
+bool Htbl_new(Htbl * htbl, i32 isize)
+{
+    return Htbl_new_capacity(htbl, isize, _HTBL_DC);
+}
+
+void Htbl_del(Htbl * htbl)
+{
+    Bfd_del(& htbl->index);
+    Bfd_del(& htbl->rem);
+    Seg_del(& htbl->seg);
+}
+
+i32 Htbl_count(const Htbl * htbl)
+{
+    return htbl->count;
+}
+
+static void * _Htbl_get(const Htbl * htbl, i32 idx)
+{
+    return Seg_get(& htbl->seg, idx);
+}
+
+static bool _Htbl_has(const Htbl * htbl, i32 idx)
+{
+    return Bfd_bit(& htbl->index, idx);
+}
+
+static bool _Htbl_had(const Htbl * htbl, i32 idx)
+{
+    return Bfd_bit(& htbl->rem, idx);
+}
+
+static i32 _Htbl_hash_idx(const Htbl * htbl, const void * item, hashf hash)
+{
+    u64 val;
+
+    val = hash(item);
+    val = val % Seg_len(& htbl->seg);
+
+    return val;
+}
+
+static i32 _Htbl_next_empty(const Htbl * htbl, i32 idx)
+{
+    while (true)
+    {
+        if (! _Htbl_has(htbl, idx)) return idx;
+
+        idx = (idx + 1) % Seg_len(& htbl->seg);
+    }
+}
+
+static double _Htbl_load(const Htbl * htbl)
+{
+    return ((double) htbl->count) / Seg_len(& htbl->seg);
+}
+
+static i32 _Htbl_idxof(const Htbl * htbl, const void * item, i32 start, eqf eq)
+{
+    while (true)
+    {
+        if (_Htbl_has(htbl, start))
+        {
+            if (eq(_Htbl_get(htbl, start), item)) return start;
+        }
+        else if (! _Htbl_had(htbl, start)) return NO_IDX;
+
+        start = (start + 1) % Seg_len(& htbl->seg);
+    }
+}
+
+void * Htbl_get(const Htbl * htbl, const void * item, hashf hash, eqf eq)
+{
+    i32 idx;
+
+    if (! Htbl_count(htbl)) return 0;
+
+    idx = _Htbl_hash_idx(htbl, item, hash);
+    idx = _Htbl_idxof(htbl, item, idx, eq);
+
+    return idx == NO_IDX ? 0 : _Htbl_get(htbl, idx);
+}
+
+static void _Htbl_insert(Htbl * htbl, i32 idx, const void * item)
+{
+    Seg_set(& htbl->seg, idx, item);
+    Bfd_set(& htbl->index, idx);
+
+    htbl->count ++;
+}
+
+static bool _Htbl_rehash(Htbl * htbl, i32 capacity, hashf hash)
+{
+    Htbl    new;
+    void *  item;
+    i32     idx;
+
+    if (! Htbl_new_capacity(& new, Seg_isize(& htbl->seg), capacity)) return false;
+    
+    for (i32 k = 0; k < Seg_len(& htbl->seg); k ++)
+    {
+        if (_Htbl_has(htbl, k))
+        {
+            item = _Htbl_get(htbl, k);
+            idx = _Htbl_hash_idx(& new, item, hash);
+            idx = _Htbl_next_empty(& new, idx);
+
+            _Htbl_insert(& new, idx, item);
+        }
+    }
+
+    Htbl_del(htbl);
+    * htbl = new;
+
+    return true;
+}
+
+bool Htbl_insert_check(Htbl * htbl, const void * item, hashf hash)
+{
+    i32 idx;
+
+    if (_Htbl_load(htbl) > _HTBL_LOADF)
+    {
+        if (! _Htbl_rehash(htbl, Seg_len(& htbl->seg) * 2, hash)) return false;
+    }
+
+    idx = _Htbl_hash_idx(htbl, item, hash);
+    idx = _Htbl_next_empty(htbl, idx);
+
+    _Htbl_insert(htbl, idx, item);
+
+    return true;
+}
+
+#undef _HTBL_DC
+#undef _HTBL_LOADF
+
+// io
 #include <stdio.h>
 
 i32 io_get_line(char * cstr, i32 max_len)
@@ -834,6 +1036,7 @@ i32 io_get_line(char * cstr, i32 max_len)
 
     return NO_IDX;
 }
+
 
 
 #endif
