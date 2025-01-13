@@ -1051,7 +1051,5 @@ i32 io_get_line(char * cstr, i32 max_len)
     return NO_IDX;
 }
 
-
-
 #endif
 #endif
