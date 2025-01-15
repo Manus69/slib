@@ -5,20 +5,20 @@
 
 #include <arpa/inet.h>
 
-typedef struct Conn Conn;
+typedef struct Trans Trans;
 
-struct Conn
+struct Trans
 {
     struct sockaddr_in  addr;
     int                 socket;
 };
 
-bool    Conn_init_sender(Conn * conn, const char * ipcstr, int port);
-bool    Conn_init_recvr(Conn * conn, int port);
-void    Conn_close(Conn * conn);
-i32     Conn_send(const Conn * conn, const void * msg, i32 len);
-i32     Conn_recv(const Conn * conn, void * buff, i32 len);
-bool    Conn_has_data(const Conn * conn);
+bool    Trans_init_sender(Trans * trans, const char * ipcstr, int port);
+bool    Trans_init_recvr(Trans * trans, int port);
+void    Trans_close(Trans * trans);
+i32     Trans_send(const Trans * trans, const void * msg, i32 len);
+i32     Trans_recv(const Trans * trans, void * buff, i32 len);
+bool    Trans_has_data(const Trans * trans);
 
 #ifdef _SLIB_NET_IMPL
 
@@ -26,55 +26,63 @@ bool    Conn_has_data(const Conn * conn);
 #include <sys/socket.h>
 #include <unistd.h>
 
-bool Conn_init_sender(Conn * conn, const char * ipcstr, int port)
+bool Trans_init_sender(Trans * trans, const char * ipcstr, int port)
 {
-    * conn = (Conn) {};
+    * trans = (Trans) {};
 
-    conn->addr.sin_family = AF_INET;
-    conn->addr.sin_port = htons(port);
+    trans->addr.sin_family = AF_INET;
+    trans->addr.sin_port = htons(port);
 
-    if ((conn->socket = socket(AF_INET, SOCK_DGRAM, 0)) < 0) return false;
-    if (inet_pton(AF_INET, ipcstr, & (conn->addr.sin_addr)) <= 0) return false;
+    if ((trans->socket = socket(AF_INET, SOCK_DGRAM, 0)) < 0) return false;
+    if (inet_pton(AF_INET, ipcstr, & (trans->addr.sin_addr)) <= 0) return false;
 
     return true;
 }
 
-bool Conn_init_recvr(Conn * conn, int port)
+bool Trans_init_recvr(Trans * trans, int port)
 {
-    * conn = (Conn) {};
+    * trans = (Trans) {};
 
-    conn->addr.sin_family = AF_INET;
-    conn->addr.sin_port = htons(port);
-    conn->addr.sin_addr.s_addr = INADDR_ANY;
+    trans->addr.sin_family = AF_INET;
+    trans->addr.sin_port = htons(port);
+    trans->addr.sin_addr.s_addr = INADDR_ANY;
 
-    if ((conn->socket = socket(AF_INET, SOCK_DGRAM, 0)) < 0) return false;
-    if (bind(conn->socket, (struct sockaddr *) & conn->addr, sizeof(conn->addr))) return false;
+    if ((trans->socket = socket(AF_INET, SOCK_DGRAM, 0)) < 0) return false;
+    if (bind(trans->socket, (struct sockaddr *) & trans->addr, sizeof(trans->addr))) return false;
 
     return true;
 }
 
-void Conn_close(Conn * conn)
+void Trans_close(Trans * trans)
 {
-    close(conn->socket);
+    close(trans->socket);
 }
 
-i32 Conn_send(const Conn * conn, const void * msg, i32 len)
+i32 Trans_send(const Trans * trans, const void * msg, i32 len)
 {
-    return sendto(conn->socket, msg, len, 0, (struct sockaddr *) & conn->addr, sizeof(conn->addr));
+    return sendto(trans->socket, msg, len, 0, (struct sockaddr *) & trans->addr, sizeof(trans->addr));
 }
 
-i32 Conn_recv(const Conn * conn, void * buff, i32 len)
+i32 Trans_recv(const Trans * trans, void * buff, i32 len)
 {
-    return recvfrom(conn->socket, buff, len, 0, 0, 0);
+    struct sockaddr_in  addr;
+    socklen_t           addr_len;
+    i32                 recieved;
+
+    addr_len = sizeof(trans->addr);
+    recieved = recvfrom(trans->socket, buff, len, 0, (struct sockaddr *) & addr, & addr_len);
+    if (addr.sin_addr.s_addr != trans->addr.sin_addr.s_addr) return NO_IDX;
+
+    return recieved;
 }
 
-bool Conn_has_data(const Conn * conn)
+bool Trans_has_data(const Trans * trans)
 {
     struct pollfd pfd;
 
     pfd = (struct pollfd)
     {
-        .fd = conn->socket,
+        .fd = trans->socket,
         .events = POLLIN,
     };
 
