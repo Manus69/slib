@@ -13,6 +13,14 @@ struct Trans
     int                 socket;
 };
 
+typedef struct TransRecv TransRecv;
+
+struct TransRecv
+{
+    struct in_addr  addr;
+    i32             len;
+};
+
 typedef struct Tunnel Tunnel;
 
 struct Tunnel
@@ -21,18 +29,19 @@ struct Tunnel
     Trans   sender;
 };
 
-bool    Trans_init_sender(Trans * trans, const char * ipcstr, int port);
-bool    Trans_init_recvr(Trans * trans, int port);
-void    Trans_close(Trans * trans);
-i32     Trans_send(const Trans * trans, const void * msg, i32 size);
-i32     Trans_recv(const Trans * trans, void * buff, i32 size);
-bool    Trans_has_data(const Trans * trans);
 
-bool    Tunnel_init(Tunnel * tun, const char * ipcstr, int my_port, int his_port);
-void    Tunnel_close(Tunnel * tun);
-bool    Tunnel_send(const Tunnel * tun, const void * msg, i32 size);
-i32     Tunnel_recv_wait(const Tunnel * tun, void * buff, i32 size);
-i32     Tunnel_recv(const Tunnel * tun, void * buff, i32 size);
+bool        Trans_init_sender(Trans * trans, const char * ipcstr, int port);
+bool        Trans_init_recvr(Trans * trans, int port);
+void        Trans_close(Trans * trans);
+i32         Trans_send(const Trans * trans, const void * msg, i32 size);
+TransRecv   Trans_recv(const Trans * trans, void * buff, i32 size);
+bool        Trans_has_data(const Trans * trans);
+
+bool        Tunnel_init(Tunnel * tun, const char * ipcstr, int my_port, int his_port);
+void        Tunnel_close(Tunnel * tun);
+bool        Tunnel_send(const Tunnel * tun, const void * msg, i32 size);
+i32         Tunnel_recv_wait(const Tunnel * tun, void * buff, i32 size);
+i32         Tunnel_recv(const Tunnel * tun, void * buff, i32 size);
 
 
 #ifdef _SLIB_NET_IMPL
@@ -78,7 +87,7 @@ i32 Trans_send(const Trans * trans, const void * msg, i32 size)
     return sendto(trans->socket, msg, size, 0, (struct sockaddr *) & trans->addr, sizeof(trans->addr));
 }
 
-i32 Trans_recv(const Trans * trans, void * buff, i32 size)
+TransRecv Trans_recv(const Trans * trans, void * buff, i32 size)
 {
     struct sockaddr_in  addr;
     socklen_t           addr_len;
@@ -86,9 +95,12 @@ i32 Trans_recv(const Trans * trans, void * buff, i32 size)
 
     addr_len = sizeof(trans->addr);
     recieved = recvfrom(trans->socket, buff, size, 0, (struct sockaddr *) & addr, & addr_len);
-    if (addr.sin_addr.s_addr != trans->addr.sin_addr.s_addr) return NO_IDX;
 
-    return recieved;
+    return (TransRecv)
+    {
+        .addr = addr.sin_addr,
+        .len = recieved,
+    };
 }
 
 bool Trans_has_data(const Trans * trans)
@@ -130,14 +142,19 @@ bool Tunnel_send(const Tunnel * tun, const void * msg, i32 size)
 
 i32 Tunnel_recv_wait(const Tunnel * tun, void * buff, i32 size)
 {
-    return Trans_recv(& tun->recvr, buff, size);
+    TransRecv tr;
+
+    tr = Trans_recv(& tun->recvr, buff, size);
+    if (tr.addr.s_addr == tun->sender.addr.sin_addr.s_addr) return tr.len;
+
+    return NO_IDX;
 }
 
 i32 Tunnel_recv(const Tunnel * tun, void * buff, i32 size)
 {
     if (! Trans_has_data(& tun->recvr)) return 0;
 
-    return Trans_recv(& tun->recvr, buff, size);
+    return Tunnel_recv_wait(tun, buff, size);
 }
 
 #endif
