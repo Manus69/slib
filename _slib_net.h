@@ -13,12 +13,27 @@ struct Trans
     int                 socket;
 };
 
+typedef struct Tunnel Tunnel;
+
+struct Tunnel
+{
+    Trans   recvr;
+    Trans   sender;
+};
+
 bool    Trans_init_sender(Trans * trans, const char * ipcstr, int port);
 bool    Trans_init_recvr(Trans * trans, int port);
 void    Trans_close(Trans * trans);
-i32     Trans_send(const Trans * trans, const void * msg, i32 len);
-i32     Trans_recv(const Trans * trans, void * buff, i32 len);
+i32     Trans_send(const Trans * trans, const void * msg, i32 size);
+i32     Trans_recv(const Trans * trans, void * buff, i32 size);
 bool    Trans_has_data(const Trans * trans);
+
+bool    Tunnel_init(Tunnel * tun, const char * ipcstr, int my_port, int his_port);
+void    Tunnel_close(Tunnel * tun);
+bool    Tunnel_send(const Tunnel * tun, const void * msg, i32 size);
+i32     Tunnel_recv_wait(const Tunnel * tun, void * buff, i32 size);
+i32     Tunnel_recv(const Tunnel * tun, void * buff, i32 size);
+
 
 #ifdef _SLIB_NET_IMPL
 
@@ -58,19 +73,19 @@ void Trans_close(Trans * trans)
     close(trans->socket);
 }
 
-i32 Trans_send(const Trans * trans, const void * msg, i32 len)
+i32 Trans_send(const Trans * trans, const void * msg, i32 size)
 {
-    return sendto(trans->socket, msg, len, 0, (struct sockaddr *) & trans->addr, sizeof(trans->addr));
+    return sendto(trans->socket, msg, size, 0, (struct sockaddr *) & trans->addr, sizeof(trans->addr));
 }
 
-i32 Trans_recv(const Trans * trans, void * buff, i32 len)
+i32 Trans_recv(const Trans * trans, void * buff, i32 size)
 {
     struct sockaddr_in  addr;
     socklen_t           addr_len;
     i32                 recieved;
 
     addr_len = sizeof(trans->addr);
-    recieved = recvfrom(trans->socket, buff, len, 0, (struct sockaddr *) & addr, & addr_len);
+    recieved = recvfrom(trans->socket, buff, size, 0, (struct sockaddr *) & addr, & addr_len);
     if (addr.sin_addr.s_addr != trans->addr.sin_addr.s_addr) return NO_IDX;
 
     return recieved;
@@ -87,6 +102,42 @@ bool Trans_has_data(const Trans * trans)
     };
 
     return poll(& pfd, 1, 0) > 0;
+}
+
+bool Tunnel_init(Tunnel * tun, const char * ipcstr, int my_port, int his_port)
+{
+    if (! Trans_init_recvr(& tun->recvr, my_port)) return false;
+    if (! Trans_init_sender(& tun->sender, ipcstr, his_port)) return false;
+
+
+    return true;
+}
+
+void Tunnel_close(Tunnel * tun)
+{
+    Trans_close(& tun->sender);
+    Trans_close(& tun->recvr);
+}
+
+bool Tunnel_send(const Tunnel * tun, const void * msg, i32 size)
+{
+    i32 len;
+
+    len = Trans_send(& tun->sender, msg, size);
+    
+    return len == size;
+}
+
+i32 Tunnel_recv_wait(const Tunnel * tun, void * buff, i32 size)
+{
+    return Trans_recv(& tun->recvr, buff, size);
+}
+
+i32 Tunnel_recv(const Tunnel * tun, void * buff, i32 size)
+{
+    if (! Trans_has_data(& tun->recvr)) return 0;
+
+    return Trans_recv(& tun->recvr, buff, size);
 }
 
 #endif

@@ -17,6 +17,13 @@
     $drf(T) y = _t; \
 }
 
+#define $pair_gen(T, R) \
+typedef struct \
+{ \
+    T first; \
+    R second; \
+}   T ## _ ## R;
+
 #define $cmpf_gen(T) \
 static inline int T ## _cmpf(const void * lhs, const void * rhs) \
 { \
@@ -118,8 +125,6 @@ static inline u64 rng_xor(u64 * seed)
 
 u64 math_next_pow2(u64 x);
 u64 math_ack(u64 m, u64 n);
-
-i32 byte_bits_cstr(byte bt, char * cstr);
 
 //u64
 bool u64_bit(u64 x, i32 k);
@@ -223,8 +228,11 @@ bool Htbl_insert_check(Htbl * htbl, const void * item, hashf hash);
 
 
 //io
-
 i32 io_get_line(char * cstr, i32 max_len);
+
+//cstr
+i32 cstr_parse_i32(const char * cstr, i32 * dst);
+i32 byte_bits_cstr(byte bt, char * cstr);
 
 #ifdef _SLIB_IMPL
 
@@ -1049,6 +1057,25 @@ i32 io_get_line(char * cstr, i32 max_len)
     }
 
     return NO_IDX;
+}
+
+//cstr
+
+#include <limits.h>
+
+i32 cstr_parse_i32(const char * cstr, i32 * dst)
+{
+    long    res;
+    char *  end;
+
+    res = strtol(cstr, & end, 10);
+
+    if (end == cstr) return 0;
+    if (res < INT_MIN || res > INT_MAX) return 0;
+
+    * dst = res;
+
+    return end - cstr;
 }
 
 #endif
