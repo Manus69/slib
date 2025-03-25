@@ -121,7 +121,6 @@ bool Tunnel_init(Tunnel * tun, const char * ipcstr, int my_port, int his_port)
     if (! Trans_init_recvr(& tun->recvr, my_port)) return false;
     if (! Trans_init_sender(& tun->sender, ipcstr, his_port)) return false;
 
-
     return true;
 }
 

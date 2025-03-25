@@ -123,6 +123,11 @@ static inline u64 rng_xor(u64 * seed)
     return * seed = x;
 }
 
+//mem
+void mem_map(void * ptr, i32 len, i32 isize, void (* f)(void *));
+void mem_map_arg(void * ptr, i32 len, i32 isize, void (* f)(void *, void *), void * arg);
+
+
 u64 math_next_pow2(u64 x);
 u64 math_ack(u64 m, u64 n);
 
@@ -182,6 +187,7 @@ void Vec_push(Vec * vec, const void * item);
 bool Vec_push_check(Vec * vec, const void * item);
 void * Vec_pop(Vec * vec);
 void * Vec_pop_all(Vec * vec);
+void * Vec_rem_swap(Vec * vec, i32 idx, swapf swap);
 i32 Vec_len(const Vec * vec);
 i32 Vec_isize(const Vec * vec);
 void Vec_map_vv(const Vec * vec, void (* f) (void *));
@@ -239,6 +245,24 @@ i32 byte_bits_cstr(byte bt, char * cstr);
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+
+//mem
+
+void mem_map(void * ptr, i32 len, i32 isize, void (* f)(void *))
+{
+    for (i32 k = 0; k < len; k ++)
+    {
+        f(ptr + (k * isize));
+    }
+}
+
+void mem_map_arg(void * ptr, i32 len, i32 isize, void (* f)(void *, void *), void * arg)
+{
+    for (i32 k = 0; k < len; k ++)
+    {
+        f(ptr + (k * isize), arg);
+    }
+}
 
 // math
 
@@ -602,6 +626,13 @@ void * Vec_pop_all(Vec * vec)
     vec->idx = 0;
 
     return Vec_first(vec);
+}
+
+void * Vec_rem_swap(Vec * vec, i32 idx, swapf swap)
+{
+    swap(Vec_get(vec, idx), Vec_last(vec));
+
+    return Vec_pop(vec);
 }
 
 void Vec_map_vv(const Vec * vec, void (* f) (void *))
