@@ -36,6 +36,12 @@ static inline void T ## _swapf(void * lhs, void * rhs) \
     $swap(T, lhs, rhs) \
 }
 
+#define $swap_gen(T) \
+static inline void T ## _swap(T * lhs, T * rhs) \
+{ \
+    $swap(T, lhs, rhs); \
+}
+
 #define $hashf_gen(T) \
 static inline u64 T ## _hashf(const void * item) \
 { \
@@ -124,9 +130,9 @@ static inline u64 rng_xor(u64 * seed)
 }
 
 //mem
-void mem_map(void * ptr, i32 len, i32 isize, void (* f)(void *));
-void mem_map_arg(void * ptr, i32 len, i32 isize, void (* f)(void *, void *), void * arg);
-
+#define $mem_map(ptr, T, len, f) mem_map((void *) ptr, sizeof(T), len, (void (*)(void *)) f)
+void mem_map(void * ptr, i32 isize, i32 len, void (* f)(void *));
+void mem_map_arg(void * ptr, i32 isize, i32 len, void (* f)(void *, void *), void * arg);
 
 u64 math_next_pow2(u64 x);
 u64 math_ack(u64 m, u64 n);
@@ -208,6 +214,7 @@ void * Heap_pop_all(Heap * heap);
 bool Deq_new(Deq * deq, i32 isize);
 void Deq_del(Deq * deq);
 i32 Deq_len(const Deq * deq);
+bool Deq_empty(Deq const * deq);
 i32 Deq_isize(const Deq * deq);
 i32 Deq_fcl(const Deq * deq);
 i32 Deq_fcr(const Deq * deq);
@@ -217,6 +224,7 @@ void * Deq_last(const Deq * deq);
 void Deq_set(const Deq * deq, i32 idx, const void * item);
 void Deq_pushl(Deq * deq, const void * item);
 void Deq_pushr(Deq * deq, const void * item);
+void * Deq_popl(Deq * deq);
 bool Deq_reserver(Deq * deq, i32 len);
 bool Deq_reservel(Deq * deq, i32 len);
 bool Deq_pushl_check(Deq * deq, const void * item);
@@ -248,7 +256,7 @@ i32 byte_bits_cstr(byte bt, char * cstr);
 
 //mem
 
-void mem_map(void * ptr, i32 len, i32 isize, void (* f)(void *))
+void mem_map(void * ptr, i32 isize, i32 len, void (* f)(void *))
 {
     for (i32 k = 0; k < len; k ++)
     {
@@ -256,7 +264,7 @@ void mem_map(void * ptr, i32 len, i32 isize, void (* f)(void *))
     }
 }
 
-void mem_map_arg(void * ptr, i32 len, i32 isize, void (* f)(void *, void *), void * arg)
+void mem_map_arg(void * ptr, i32 isize, i32 len, void (* f)(void *, void *), void * arg)
 {
     for (i32 k = 0; k < len; k ++)
     {
@@ -813,6 +821,11 @@ i32 Deq_len(const Deq * deq)
     return deq->len;
 }
 
+bool Deq_empty(Deq const * deq)
+{
+    return Deq_len(deq) == 0;
+}
+
 i32 Deq_isize(const Deq * deq)
 {
     return Seg_isize(& deq->seg);
@@ -859,6 +872,14 @@ void Deq_pushr(Deq * deq, const void * item)
     deq->len ++;
 
     Vec_push((Vec *) deq, item);
+}
+
+void * Deq_popl(Deq * deq)
+{
+    deq->idx ++;
+    deq->len --;
+
+    return Deq_get(deq, -1);
 }
 
 bool Deq_reserver(Deq * deq, i32 len)
